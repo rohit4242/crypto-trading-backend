@@ -6,7 +6,7 @@ import { BaseRequestSchema } from "../schemas/binance.js";
 
 const account = new Hono();
 
-account.get("/balance", validateApiCredentials, async (c) => {
+account.post("/balance", validateApiCredentials, async (c) => {
   try {
     const body = await c.req.json();
     const validateData = BaseRequestSchema.parse(body);
