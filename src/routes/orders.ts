@@ -207,8 +207,18 @@ orders.post("/create", validateApiCredentials, async (c) => {
     // For MARKET orders without explicit price, use current market price.
     const effectivePrice = order.price
       ?? (await getCurrentPrice(order.symbol, validateData.credentials));
+    
+    console.log("Notional validation check:", {
+      hasQuantity: !!order.quantity,
+      quantity: order.quantity,
+      effectivePrice,
+      symbol: order.symbol
+    });
+    
     if (order.quantity && effectivePrice) {
       const notionalValidation = validateOrderNotional(order.quantity, effectivePrice, symbolInfo);
+      console.log("Notional validation result:", notionalValidation);
+      
       if (!notionalValidation.valid) {
         return c.json({
           message: "Order validation failed",
@@ -233,9 +243,51 @@ orders.post("/create", validateApiCredentials, async (c) => {
 
     const data = await response.data();
     return c.json({ message: "Order created successfully", data }, 200);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating order", error);
-    return c.json({ message: "Error creating order" }, 500);
+    
+    // Handle Binance API errors with specific messaging
+    if (error?.response?.data?.msg) {
+      const binanceError = error.response.data.msg;
+      
+      // Handle specific Binance error types
+      if (binanceError.includes("Filter failure: NOTIONAL") || binanceError.includes("MIN_NOTIONAL")) {
+        return c.json({
+          message: "Order validation failed",
+          error: `Order value is below minimum notional requirement for ${validateData.order.symbol}`,
+          suggestion: "Increase quantity or order value to meet minimum requirements"
+        }, 400);
+      }
+      
+      if (binanceError.includes("Filter failure: LOT_SIZE")) {
+        return c.json({
+          message: "Order validation failed", 
+          error: `Invalid quantity for ${validateData.order.symbol}`,
+          suggestion: "Adjust quantity to meet lot size requirements"
+        }, 400);
+      }
+      
+      if (binanceError.includes("insufficient")) {
+        return c.json({
+          message: "Order validation failed",
+          error: "Insufficient balance to place order",
+          suggestion: "Check your account balance"
+        }, 400);
+      }
+      
+      // Generic Binance error
+      return c.json({
+        message: "Order validation failed",
+        error: binanceError,
+        suggestion: "Please check your order parameters"
+      }, 400);
+    }
+    
+    // Generic error fallback
+    return c.json({ 
+      message: "Error creating order",
+      error: error instanceof Error ? error.message : "Unknown error"
+    }, 500);
   }
 });
 
