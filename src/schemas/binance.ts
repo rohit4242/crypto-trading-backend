@@ -11,27 +11,27 @@ export const CreateOrderSchema = z
     symbol: z.string().min(1, "Symbol is required").toUpperCase(),
     side: z.enum(["BUY", "SELL"]),
     type: z.enum(["LIMIT", "MARKET"]),
-    quantity: z.string().min(1, "Quantity is required").optional(),
-    quoteOrderQty: z
-      .string()
-      .min(1, "Quote order quantity is required for MARKET orders")
-      .optional(),
+    // Accept numeric strings to avoid float issues; optional depending on type
+    quantity: z.string().optional(),
+    quoteOrderQty: z.string().optional(),
     price: z.string().optional(),
     timeInForce: z.enum(["GTC", "IOC", "FOK"]).default("GTC"),
   })
   .refine(
     (data) => {
       if (data.type === "MARKET") {
-        return data.quoteOrderQty !== undefined;
+        // Allow either quantity OR quoteOrderQty for MARKET orders
+        return !!(data.quantity || data.quoteOrderQty);
       }
       if (data.type === "LIMIT") {
-        return data.quantity !== undefined && data.price !== undefined;
+        // LIMIT orders must include both quantity and price
+        return !!(data.quantity && data.price);
       }
       return true;
     },
     {
       message:
-        "For MARKET orders, quoteOrderQty is required. For LIMIT orders, both quantity and price are required.",
+        "For MARKET orders, provide quantity or quoteOrderQty. For LIMIT orders, provide both quantity and price.",
     }
   );
 

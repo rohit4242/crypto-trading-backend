@@ -10,7 +10,7 @@ import {
   CreateOrderSchema,
   type ApiCredentials,
 } from "../schemas/binance.js";
-import { getCurrentPrice, getSymbolInfo, validateOrderQuantity, validateOrderPrice } from "../lib/utils.js";
+import { getCurrentPrice, getSymbolInfo, validateOrderQuantity, validateOrderPrice, validateOrderNotional } from "../lib/utils.js";
 
 const orders = new Hono();
 
@@ -198,6 +198,23 @@ orders.post("/create", validateApiCredentials, async (c) => {
           error: priceValidation.error,
           suggestion: priceValidation.adjustedPrice
             ? `Consider using price: ${priceValidation.adjustedPrice}`
+            : undefined,
+        }, 400);
+      }
+    }
+
+    // If we have both quantity and a price context, validate min notional.
+    // For MARKET orders without explicit price, use current market price.
+    const effectivePrice = order.price
+      ?? (await getCurrentPrice(order.symbol, validateData.credentials));
+    if (order.quantity && effectivePrice) {
+      const notionalValidation = validateOrderNotional(order.quantity, effectivePrice, symbolInfo);
+      if (!notionalValidation.valid) {
+        return c.json({
+          message: "Order validation failed",
+          error: notionalValidation.error,
+          suggestion: notionalValidation.adjustedQuantity
+            ? `Consider using quantity: ${notionalValidation.adjustedQuantity}`
             : undefined,
         }, 400);
       }

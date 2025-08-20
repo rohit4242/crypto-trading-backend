@@ -156,3 +156,50 @@ export const validateOrderPrice = (
 
   return { valid: true };
 };
+
+// Validate minimum notional (quantity * price) against symbol rules.
+export const validateOrderNotional = (
+  quantity: number,
+  price: number,
+  symbolInfo: SymbolInfo
+): { valid: boolean; error?: string; adjustedQuantity?: number } => {
+  const minNotionalFilter = symbolInfo.filters.find(
+    (filter) => filter.filterType === "MIN_NOTIONAL"
+  );
+
+  if (!minNotionalFilter) {
+    return { valid: true };
+  }
+
+  const minNotional = Number(minNotionalFilter.minNotional);
+  const notional = quantity * price;
+
+  if (notional >= minNotional) {
+    return { valid: true };
+  }
+
+  // Suggest adjusted quantity based on lot size step and min quantity
+  const lotSizeFilter = symbolInfo.filters.find(
+    (filter) => filter.filterType === "LOT_SIZE"
+  );
+
+  let suggestedQuantity = minNotional / price;
+
+  if (lotSizeFilter) {
+    const minQty = Number(lotSizeFilter.minQty);
+    const stepSize = Number(lotSizeFilter.stepSize);
+    if (stepSize > 0) {
+      const steps = Math.ceil((suggestedQuantity - minQty) / stepSize);
+      suggestedQuantity = minQty + Math.max(0, steps) * stepSize;
+    }
+    if (suggestedQuantity < minQty) {
+      suggestedQuantity = minQty;
+    }
+  }
+
+  return {
+    valid: false,
+    error: `Order notional ${notional.toFixed(2)} is below minimum ${minNotional} for ${symbolInfo.symbol}`,
+    adjustedQuantity: suggestedQuantity,
+  };
+};
